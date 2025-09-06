@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Watch Video</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #121212;
+            color: #e0e0e0;
+            margin: 0;
+            padding: 0;
+        }
+
+        .header {
+            width: 100%;
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            padding: 1rem 2rem;
+            gap: 1rem;
+            position: fixed;
+            top: 0;
+            right: 0;
+            background-color: #121212;
+            z-index: 100;
+        }
+
+        .header-text {
+            font-weight: bold;
+            color: #a0a0a0;
+            font-size: 0.9rem;
+        }
+
+        .login-button, .sign-out-button, .upload-button {
+            background-color: #0056b3;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            text-decoration: none;
+            transition: background-color 0.2s, transform 0.2s;
+            font-size: 0.9rem;
+        }
+        
+        .login-button:hover, .sign-out-button:hover, .upload-button:hover {
+            background-color: #007bff;
+            transform: translateY(-1px);
+        }
+
+        .container {
+            padding: 80px 20px 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .video-player-container {
+            width: 100%;
+            max-width: 900px;
+            background-color: #000;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+        }
+
+        #videoPlayer {
+            width: 100%;
+            height: auto;
+        }
+
+        .video-details {
+            width: 100%;
+            max-width: 900px;
+            padding: 1rem;
+            text-align: left;
+        }
+
+        .video-title {
+            font-size: 2rem;
+            font-weight: bold;
+            margin: 0 0 0.5rem 0;
+            color: white;
+        }
+
+        .video-creator {
+            font-size: 1.1rem;
+            color: #a0a0a0;
+        }
+
+        .loading-state, .error-state {
+            text-align: center;
+            margin-top: 50px;
+            color: #a0a0a0;
+        }
+
+    </style>
+</head>
+<body>
+    <div class="header">
+        <span id="loggedInAs" class="header-text" style="display:none;"></span>
+        <button id="signOutButton" class="sign-out-button" style="display:none;">Sign Out</button>
+        <a id="loginButton" href="/login" class="login-button" style="display:none;">Log In</a>
+        <a href="/upload" class="upload-button">Upload</a>
+    </div>
+
+    <div class="container">
+        <div id="videoContainer" class="video-player-container" style="display: none;">
+            <video id="videoPlayer" controls autoplay></video>
+        </div>
+        <div id="videoDetails" class="video-details" style="display: none;">
+            <h1 id="videoTitle" class="video-title"></h1>
+            <p id="videoCreator" class="video-creator"></p>
+        </div>
+        <div id="loadingState" class="loading-state">
+            Loading video...
+        </div>
+        <div id="errorState" class="error-state" style="display: none;">
+            Video not found.
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Header logic
+            const creatorName = localStorage.getItem('creatorName');
+            const loggedInAs = document.getElementById('loggedInAs');
+            const signOutButton = document.getElementById('signOutButton');
+            const loginButton = document.getElementById('loginButton');
+
+            if (creatorName) {
+                loggedInAs.textContent = `Logged in as ${creatorName}`;
+                loggedInAs.style.display = 'inline';
+                signOutButton.style.display = 'inline';
+                loginButton.style.display = 'none';
+            } else {
+                loggedInAs.style.display = 'none';
+                signOutButton.style.display = 'none';
+                loginButton.style.display = 'inline';
+            }
+
+            signOutButton.addEventListener('click', () => {
+                localStorage.removeItem('creatorName');
+                window.location.href = '/login';
+            });
+
+            // Watch page video logic
+            const videoPlayer = document.getElementById('videoPlayer');
+            const videoContainer = document.getElementById('videoContainer');
+            const videoDetails = document.getElementById('videoDetails');
+            const videoTitle = document.getElementById('videoTitle');
+            const videoCreator = document.getElementById('videoCreator');
+            const loadingState = document.getElementById('loadingState');
+            const errorState = document.getElementById('errorState');
+
+            // Function to get a URL parameter
+            const getUrlParameter = (name) => {
+                name = name.replace(/[\[]/, '\\[').replace(/[\]]/, '\\]');
+                const regex = new RegExp('[\\?&]' + name + '=([^&#]*)');
+                const results = regex.exec(location.search);
+                return results === null ? '' : decodeURIComponent(results[1].replace(/\+/g, ' '));
+            };
+
+            async function loadVideo() {
+                const videoId = getUrlParameter('id');
+                if (!videoId) {
+                    loadingState.style.display = 'none';
+                    errorState.textContent = 'No video ID provided.';
+                    errorState.style.display = 'block';
+                    return;
+                }
+
+                try {
+                    const response = await fetch('/api/videos');
+                    if (!response.ok) {
+                        throw new Error('Failed to fetch video list');
+                    }
+                    const videos = await response.json();
+                    const video = videos.find(v => v.id === videoId);
+
+                    if (video) {
+                        document.title = video.title;
+                        videoPlayer.src = video.videoUrl;
+                        videoPlayer.poster = video.thumbnailUrl;
+                        videoTitle.textContent = video.title;
+                        videoCreator.innerHTML = `by <a href="/creator?name=${encodeURIComponent(video.creator)}">${video.creator}</a>`;
+                        
+                        // Display the video and details
+                        loadingState.style.display = 'none';
+                        videoContainer.style.display = 'block';
+                        videoDetails.style.display = 'block';
+
+                    } else {
+                        loadingState.style.display = 'none';
+                        errorState.textContent = 'Video not found.';
+                        errorState.style.display = 'block';
+                    }
+                } catch (error) {
+                    console.error('Error loading video:', error);
+                    loadingState.style.display = 'none';
+                    errorState.textContent = 'Failed to load video data.';
+                    errorState.style.display = 'block';
+                }
+            }
+            
+            loadVideo();
+        });
+    </script>
+</body>
+</html>
