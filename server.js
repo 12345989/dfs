@@ -10,6 +10,7 @@ const multer = require('multer');
 // The fs and util modules are needed for file system operations.
 const fs = require('fs');
 const util = require('util');
+const stream = require('stream');
 
 // Promisify fs.unlink to use it with async/await
 const unlinkFile = util.promisify(fs.unlink);
@@ -57,9 +58,8 @@ const r2 = new S3Client({
     },
 });
 
-// Set up Multer for handling file uploads. The 'dest' option specifies a temporary storage location.
-// The files will be moved to R2 after processing.
-const upload = multer({ dest: 'temp_uploads/' });
+// Configure multer to store uploaded files in memory
+const upload = multer({ storage: multer.memoryStorage() });
 
 // Middleware to serve static files from the 'public' directory.
 app.use(express.static(path.join(__dirname, 'public')));
@@ -222,85 +222,85 @@ app.post('/upload_video', upload.fields([
 
         // --- Thumbnail Logic ---
         let thumbnailFileName;
-        let originalVideoPath = videoFile.path;
+        let originalVideoBuffer = videoFile.buffer;
         if (thumbnailFile) {
             // If a custom thumbnail was provided, upload it.
             thumbnailFileName = `${Date.now()}-${thumbnailFile.originalname}`;
             const thumbnailUploadParams = {
                 Bucket: R2_BUCKET_NAME,
                 Key: `thumbnails/${thumbnailFileName}`,
-                Body: fs.createReadStream(thumbnailFile.path),
+                Body: thumbnailFile.buffer,
                 ContentType: thumbnailFile.mimetype,
             };
             await r2.send(new PutObjectCommand(thumbnailUploadParams));
-            // Delete temp thumbnail file after upload
-            await unlinkFile(thumbnailFile.path);
         } else {
             // If no custom thumbnail, generate one from the video.
-            const thumbnailPath = path.join(__dirname, 'temp_uploads', `thumb-${Date.now()}.png`);
             thumbnailFileName = `thumb-${Date.now()}.png`;
-
-            // Use fluent-ffmpeg to generate a thumbnail from the video.
-            await new Promise((resolve, reject) => {
-                ffmpeg(originalVideoPath)
+            const thumbnailBufferPromise = new Promise((resolve, reject) => {
+                const buffers = [];
+                ffmpeg()
+                    .input(stream.Readable.from(originalVideoBuffer))
                     .screenshots({
                         timestamps: ['10%'], // Grab a frame from 10% of the way through the video.
-                        filename: path.basename(thumbnailPath),
-                        folder: path.dirname(thumbnailPath),
+                        filename: 'thumbnail.png',
+                        folder: '/tmp', // Use a temporary folder for intermediate file
                         size: '400x225',
                     })
                     .on('end', () => {
-                        console.log('Thumbnail generated successfully.');
-                        resolve();
+                        const thumbnailPath = path.join('/tmp', 'thumbnail.png');
+                        fs.readFile(thumbnailPath, (err, data) => {
+                            if (err) reject(err);
+                            else {
+                                fs.unlink(thumbnailPath, () => {}); // Clean up temp file
+                                resolve(data);
+                            }
+                        });
                     })
                     .on('error', (err) => {
                         console.error('Error generating thumbnail:', err);
                         reject(err);
                     });
             });
+            const thumbnailBuffer = await thumbnailBufferPromise;
 
             // Upload the generated thumbnail to R2.
             const thumbnailUploadParams = {
                 Bucket: R2_BUCKET_NAME,
                 Key: `thumbnails/${thumbnailFileName}`,
-                Body: fs.createReadStream(thumbnailPath),
+                Body: thumbnailBuffer,
                 ContentType: 'image/png',
             };
             await r2.send(new PutObjectCommand(thumbnailUploadParams));
-            // Delete temp thumbnail file after upload
-            await unlinkFile(thumbnailPath);
         }
 
         // --- Video Conversion and Upload Logic ---
-        const convertedVideoPath = path.join(__dirname, 'temp_uploads', `converted-${Date.now()}.mp4`);
-        const videoFileName = `video-${Date.now()}.mp4`;
-        
-        await new Promise((resolve, reject) => {
-            ffmpeg(originalVideoPath)
+        const convertedVideoBufferPromise = new Promise((resolve, reject) => {
+            const buffers = [];
+            ffmpeg()
+                .input(stream.Readable.from(originalVideoBuffer))
                 .outputOptions('-vcodec', 'libx264', '-acodec', 'aac') // Convert to MP4
                 .on('end', () => {
                     console.log('Video converted to MP4 successfully.');
-                    resolve();
+                    resolve(Buffer.concat(buffers));
                 })
                 .on('error', (err) => {
                     console.error('Error converting video:', err);
                     reject(err);
                 })
-                .save(convertedVideoPath);
+                .pipe(new stream.PassThrough())
+                .on('data', chunk => buffers.push(chunk))
+                .on('end', () => {});
         });
+        const convertedVideoBuffer = await convertedVideoBufferPromise;
 
+        const videoFileName = `video-${Date.now()}.mp4`;
         const videoUploadParams = {
             Bucket: R2_BUCKET_NAME,
             Key: `videos/${videoFileName}`,
-            Body: fs.createReadStream(convertedVideoPath),
+            Body: convertedVideoBuffer,
             ContentType: 'video/mp4',
         };
         await r2.send(new PutObjectCommand(videoUploadParams));
-
-        // Delete all temporary files after successful uploads
-        await unlinkFile(originalVideoPath);
-        await unlinkFile(convertedVideoPath);
-
 
         // Save the video metadata to our JSON file.
         const videos = await readVideoData();
