@@ -3,210 +3,126 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Watch Video</title>
+    <title>Watch</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         body {
-            font-family: Arial, sans-serif;
-            background-color: #121212;
-            color: #e0e0e0;
-            margin: 0;
-            padding: 0;
-        }
-
-        .header {
-            width: 100%;
-            display: flex;
-            justify-content: flex-end;
-            align-items: center;
-            padding: 1rem 2rem;
-            gap: 1rem;
-            position: fixed;
-            top: 0;
-            right: 0;
-            background-color: #121212;
-            z-index: 100;
-        }
-
-        .header-text {
-            font-weight: bold;
-            color: #a0a0a0;
-            font-size: 0.9rem;
-        }
-
-        .login-button, .sign-out-button, .upload-button {
-            background-color: #0056b3;
+            font-family: 'Inter', sans-serif;
+            background-color: #0d0d0d;
             color: white;
-            border: none;
-            padding: 0.5rem 1rem;
-            border-radius: 6px;
-            cursor: pointer;
-            text-decoration: none;
-            transition: background-color 0.2s, transform 0.2s;
-            font-size: 0.9rem;
         }
-        
-        .login-button:hover, .sign-out-button:hover, .upload-button:hover {
-            background-color: #007bff;
-            transform: translateY(-1px);
-        }
-
         .container {
-            padding: 80px 20px 20px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 20px;
+            max-width: 1000px;
+            margin: 0 auto;
         }
-
+        header {
+            background-color: #1a1a1a;
+            border-bottom: 1px solid #333;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+        .nav-link {
+            transition: color 0.2s ease-in-out;
+        }
+        .nav-link:hover {
+            color: #4CAF50;
+        }
+        #logout-btn {
+            background-color: #f44336;
+            transition: background-color 0.2s ease-in-out;
+        }
+        #logout-btn:hover {
+            background-color: #d32f2f;
+        }
         .video-player-container {
-            width: 100%;
+            position: relative;
             max-width: 900px;
-            background-color: #000;
+            max-height: 80vh; /* Responsive height */
+            margin: 2rem auto;
             border-radius: 12px;
             overflow: hidden;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+            background-color: #000;
         }
-
-        #videoPlayer {
+        .video-player-container video {
             width: 100%;
-            height: auto;
+            height: 100%;
+            object-fit: contain; /* Prevents stretching and maintains aspect ratio */
         }
-
         .video-details {
-            width: 100%;
             max-width: 900px;
-            padding: 1rem;
-            text-align: left;
+            margin: 0 auto;
         }
-
-        .video-title {
-            font-size: 2rem;
-            font-weight: bold;
-            margin: 0 0 0.5rem 0;
-            color: white;
+        /* Style for the button */
+        .primary-btn {
+            background-color: #4CAF50;
+            transition: background-color 0.2s ease-in-out;
         }
-
-        .video-creator {
-            font-size: 1.1rem;
-            color: #a0a0a0;
+        .primary-btn:hover {
+            background-color: #45a049;
         }
-
-        .loading-state, .error-state {
-            text-align: center;
-            margin-top: 50px;
-            color: #a0a0a0;
-        }
-
     </style>
 </head>
-<body>
-    <div class="header">
-        <span id="loggedInAs" class="header-text" style="display:none;"></span>
-        <button id="signOutButton" class="sign-out-button" style="display:none;">Sign Out</button>
-        <a id="loginButton" href="/login" class="login-button" style="display:none;">Log In</a>
-        <a href="/upload" class="upload-button">Upload</a>
-    </div>
+<body class="bg-gray-900 text-white">
 
-    <div class="container">
-        <div id="videoContainer" class="video-player-container" style="display: none;">
-            <video id="videoPlayer" controls autoplay></video>
+    <header class="p-4 shadow-md">
+        <div class="container mx-auto flex justify-between items-center">
+            <h1 class="text-3xl font-bold text-gray-100">Video App</h1>
+            <nav class="flex items-center space-x-4">
+                <span id="welcome-message" class="text-gray-400 text-lg"></span>
+                <a href="/upload" id="upload-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-all duration-300">
+                    Upload
+                </a>
+                <button id="logout-btn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-all duration-300">
+                    Sign Out
+                </button>
+            </nav>
         </div>
-        <div id="videoDetails" class="video-details" style="display: none;">
-            <h1 id="videoTitle" class="video-title"></h1>
-            <p id="videoCreator" class="video-creator"></p>
+    </header>
+
+    <main class="py-10">
+        <div class="container mx-auto px-4">
+            <div class="video-player-container">
+                <video id="video-player" controls autoplay class="rounded-lg shadow-lg">
+                    Your browser does not support the video tag.
+                </video>
+            </div>
+            <div class="video-details mt-6 px-4">
+                <h2 id="video-title" class="text-3xl font-bold mb-2 text-gray-200"></h2>
+                <p id="video-creator" class="text-lg text-gray-400"></p>
+            </div>
         </div>
-        <div id="loadingState" class="loading-state">
-            Loading video...
-        </div>
-        <div id="errorState" class="error-state" style="display: none;">
-            Video not found.
-        </div>
-    </div>
+    </main>
 
     <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            // Header logic
-            const creatorName = localStorage.getItem('creatorName');
-            const loggedInAs = document.getElementById('loggedInAs');
-            const signOutButton = document.getElementById('signOutButton');
-            const loginButton = document.getElementById('loginButton');
+        document.addEventListener('DOMContentLoaded', async () => {
+            const params = new URLSearchParams(window.location.search);
+            const videoUrl = params.get('url');
+            const videoTitle = params.get('title');
+            const creatorName = params.get('creator');
 
-            if (creatorName) {
-                loggedInAs.textContent = `Logged in as ${creatorName}`;
-                loggedInAs.style.display = 'inline';
-                signOutButton.style.display = 'inline';
-                loginButton.style.display = 'none';
+            if (videoUrl) {
+                document.getElementById('video-player').src = videoUrl;
             } else {
-                loggedInAs.style.display = 'none';
-                signOutButton.style.display = 'none';
-                loginButton.style.display = 'inline';
+                // If no video URL is found, redirect to the homepage or show an error.
+                document.getElementById('video-player').style.display = 'none';
+                document.getElementById('video-title').innerText = 'Video not found.';
+                document.getElementById('video-creator').innerText = '';
             }
 
-            signOutButton.addEventListener('click', () => {
-                localStorage.removeItem('creatorName');
-                window.location.href = '/login';
+            document.getElementById('video-title').innerText = videoTitle || 'Untitled Video';
+            document.getElementById('video-creator').innerText = `Creator: ${creatorName || 'Unknown'}`;
+
+            const username = localStorage.getItem('displayName');
+            if (username) {
+                document.getElementById('welcome-message').innerText = `Signed in as ${username}`;
+            }
+
+            document.getElementById('logout-btn').addEventListener('click', () => {
+                localStorage.removeItem('displayName');
+                window.location.href = '/';
             });
-
-            // Watch page video logic
-            const videoPlayer = document.getElementById('videoPlayer');
-            const videoContainer = document.getElementById('videoContainer');
-            const videoDetails = document.getElementById('videoDetails');
-            const videoTitle = document.getElementById('videoTitle');
-            const videoCreator = document.getElementById('videoCreator');
-            const loadingState = document.getElementById('loadingState');
-            const errorState = document.getElementById('errorState');
-
-            // Function to get a URL parameter
-            const getUrlParameter = (name) => {
-                name = name.replace(/[\[]/, '\\[').replace(/[\]]/, '\\]');
-                const regex = new RegExp('[\\?&]' + name + '=([^&#]*)');
-                const results = regex.exec(location.search);
-                return results === null ? '' : decodeURIComponent(results[1].replace(/\+/g, ' '));
-            };
-
-            async function loadVideo() {
-                const videoId = getUrlParameter('id');
-                if (!videoId) {
-                    loadingState.style.display = 'none';
-                    errorState.textContent = 'No video ID provided.';
-                    errorState.style.display = 'block';
-                    return;
-                }
-
-                try {
-                    const response = await fetch('/api/videos');
-                    if (!response.ok) {
-                        throw new Error('Failed to fetch video list');
-                    }
-                    const videos = await response.json();
-                    const video = videos.find(v => v.id === videoId);
-
-                    if (video) {
-                        document.title = video.title;
-                        videoPlayer.src = video.videoUrl;
-                        videoPlayer.poster = video.thumbnailUrl;
-                        videoTitle.textContent = video.title;
-                        videoCreator.innerHTML = `by <a href="/creator?name=${encodeURIComponent(video.creator)}">${video.creator}</a>`;
-                        
-                        // Display the video and details
-                        loadingState.style.display = 'none';
-                        videoContainer.style.display = 'block';
-                        videoDetails.style.display = 'block';
-
-                    } else {
-                        loadingState.style.display = 'none';
-                        errorState.textContent = 'Video not found.';
-                        errorState.style.display = 'block';
-                    }
-                } catch (error) {
-                    console.error('Error loading video:', error);
-                    loadingState.style.display = 'none';
-                    errorState.textContent = 'Failed to load video data.';
-                    errorState.style.display = 'block';
-                }
-            }
-            
-            loadVideo();
         });
     </script>
 </body>
