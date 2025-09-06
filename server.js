@@ -210,7 +210,6 @@ app.post('/upload_video', upload.fields([
     { name: 'thumbnailFile', maxCount: 1 }
 ]), async (req, res) => {
     try {
-        // Retrieve the uploaded files and video title.
         const videoFile = req.files.videoFile[0];
         const thumbnailFile = req.files.thumbnailFile ? req.files.thumbnailFile[0] : null;
         const videoTitle = req.body.videoTitle;
@@ -220,80 +219,64 @@ app.post('/upload_video', upload.fields([
             return res.status(400).send('Missing video file, title, or creator name.');
         }
 
-        // --- Thumbnail Logic ---
         let thumbnailFileName;
-        let originalVideoBuffer = videoFile.buffer;
+        let thumbnailBuffer;
+
         if (thumbnailFile) {
-            // If a custom thumbnail was provided, upload it.
             thumbnailFileName = `${Date.now()}-${thumbnailFile.originalname}`;
-            const thumbnailUploadParams = {
-                Bucket: R2_BUCKET_NAME,
-                Key: `thumbnails/${thumbnailFileName}`,
-                Body: thumbnailFile.buffer,
-                ContentType: thumbnailFile.mimetype,
-            };
-            await r2.send(new PutObjectCommand(thumbnailUploadParams));
+            thumbnailBuffer = thumbnailFile.buffer;
         } else {
-            // If no custom thumbnail, generate one from the video.
             thumbnailFileName = `thumb-${Date.now()}.png`;
-            const thumbnailBufferPromise = new Promise((resolve, reject) => {
+            thumbnailBuffer = await new Promise((resolve, reject) => {
                 const buffers = [];
                 ffmpeg()
-                    .input(stream.Readable.from(originalVideoBuffer))
-                    .screenshots({
-                        timestamps: ['10%'], // Grab a frame from 10% of the way through the video.
-                        filename: 'thumbnail.png',
-                        folder: '/tmp', // Use a temporary folder for intermediate file
-                        size: '400x225',
-                    })
-                    .on('end', () => {
-                        const thumbnailPath = path.join('/tmp', 'thumbnail.png');
-                        fs.readFile(thumbnailPath, (err, data) => {
-                            if (err) reject(err);
-                            else {
-                                fs.unlink(thumbnailPath, () => {}); // Clean up temp file
-                                resolve(data);
-                            }
-                        });
-                    })
+                    .input(stream.Readable.from(videoFile.buffer))
+                    .seekInput('0:05') // Seek to 5 seconds to get a frame
+                    .frames(1) // Get a single frame
+                    .size('400x225')
+                    .outputOptions('-f', 'image2pipe') // Output as a single image pipe
+                    .outputOptions('-vcodec', 'png') // Set output codec to png
                     .on('error', (err) => {
                         console.error('Error generating thumbnail:', err);
                         reject(err);
-                    });
+                    })
+                    .on('end', () => {
+                        resolve(Buffer.concat(buffers));
+                    })
+                    .pipe(new stream.PassThrough())
+                    .on('data', chunk => buffers.push(chunk))
+                    .on('end', () => {});
             });
-            const thumbnailBuffer = await thumbnailBufferPromise;
-
-            // Upload the generated thumbnail to R2.
-            const thumbnailUploadParams = {
-                Bucket: R2_BUCKET_NAME,
-                Key: `thumbnails/${thumbnailFileName}`,
-                Body: thumbnailBuffer,
-                ContentType: 'image/png',
-            };
-            await r2.send(new PutObjectCommand(thumbnailUploadParams));
         }
+        
+        // Upload the thumbnail to R2
+        const thumbnailUploadParams = {
+            Bucket: R2_BUCKET_NAME,
+            Key: `thumbnails/${thumbnailFileName}`,
+            Body: thumbnailBuffer,
+            ContentType: 'image/png',
+        };
+        await r2.send(new PutObjectCommand(thumbnailUploadParams));
 
-        // --- Video Conversion and Upload Logic ---
-        const convertedVideoBufferPromise = new Promise((resolve, reject) => {
+        const videoFileName = `video-${Date.now()}.mp4`;
+        const convertedVideoBuffer = await new Promise((resolve, reject) => {
             const buffers = [];
             ffmpeg()
-                .input(stream.Readable.from(originalVideoBuffer))
+                .input(stream.Readable.from(videoFile.buffer))
                 .outputOptions('-vcodec', 'libx264', '-acodec', 'aac') // Convert to MP4
-                .on('end', () => {
-                    console.log('Video converted to MP4 successfully.');
-                    resolve(Buffer.concat(buffers));
-                })
                 .on('error', (err) => {
                     console.error('Error converting video:', err);
                     reject(err);
+                })
+                .on('end', () => {
+                    console.log('Video converted to MP4 successfully.');
+                    resolve(Buffer.concat(buffers));
                 })
                 .pipe(new stream.PassThrough())
                 .on('data', chunk => buffers.push(chunk))
                 .on('end', () => {});
         });
-        const convertedVideoBuffer = await convertedVideoBufferPromise;
 
-        const videoFileName = `video-${Date.now()}.mp4`;
         const videoUploadParams = {
             Bucket: R2_BUCKET_NAME,
             Key: `videos/${videoFileName}`,
