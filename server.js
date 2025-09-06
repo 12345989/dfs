@@ -58,8 +58,8 @@ const r2 = new S3Client({
     },
 });
 
-// Configure multer to store uploaded files in memory
-const upload = multer({ storage: multer.memoryStorage() });
+// Configure multer to store uploaded files to disk
+const upload = multer({ dest: 'uploads/' });
 
 // Middleware to serve static files from the 'public' directory.
 app.use(express.static(path.join(__dirname, 'public')));
@@ -210,6 +210,7 @@ app.post('/upload_video', upload.fields([
     { name: 'thumbnailFile', maxCount: 1 }
 ]), async (req, res) => {
     try {
+        // The file is now on disk, not in memory
         const videoFile = req.files.videoFile[0];
         const thumbnailFile = req.files.thumbnailFile ? req.files.thumbnailFile[0] : null;
         const videoTitle = req.body.videoTitle;
@@ -226,16 +227,17 @@ app.post('/upload_video', upload.fields([
             thumbnailFileName = `${Date.now()}-${thumbnailFile.originalname}`;
             thumbnailBuffer = thumbnailFile.buffer;
         } else {
+            // Generate a thumbnail from the temp file on disk
             thumbnailFileName = `thumb-${Date.now()}.png`;
             thumbnailBuffer = await new Promise((resolve, reject) => {
                 const buffers = [];
                 ffmpeg()
-                    .input(stream.Readable.from(videoFile.buffer))
-                    .seekInput('0:05') // Seek to 5 seconds to get a frame
-                    .frames(1) // Get a single frame
+                    .input(videoFile.path) // Read input from the temp file on disk
+                    .seekInput('0:05') 
+                    .frames(1)
                     .size('400x225')
-                    .outputOptions('-f', 'image2pipe') // Output as a single image pipe
-                    .outputOptions('-vcodec', 'png') // Set output codec to png
+                    .outputOptions('-f', 'image2pipe') 
+                    .outputOptions('-vcodec', 'png')
                     .on('error', (err) => {
                         console.error('Error generating thumbnail:', err);
                         reject(err);
@@ -258,30 +260,15 @@ app.post('/upload_video', upload.fields([
         };
         await r2.send(new PutObjectCommand(thumbnailUploadParams));
 
+        // Skip the video conversion and upload the original file directly
         const videoFileName = `video-${Date.now()}.mp4`;
-        const convertedVideoBuffer = await new Promise((resolve, reject) => {
-            const buffers = [];
-            ffmpeg()
-                .input(stream.Readable.from(videoFile.buffer))
-                .outputOptions('-vcodec', 'libx264', '-acodec', 'aac') // Convert to MP4
-                .on('error', (err) => {
-                    console.error('Error converting video:', err);
-                    reject(err);
-                })
-                .on('end', () => {
-                    console.log('Video converted to MP4 successfully.');
-                    resolve(Buffer.concat(buffers));
-                })
-                .pipe(new stream.PassThrough())
-                .on('data', chunk => buffers.push(chunk))
-                .on('end', () => {});
-        });
+        const videoUploadStream = fs.createReadStream(videoFile.path);
 
         const videoUploadParams = {
             Bucket: R2_BUCKET_NAME,
             Key: `videos/${videoFileName}`,
-            Body: convertedVideoBuffer,
-            ContentType: 'video/mp4',
+            Body: videoUploadStream, // Use the stream for efficient upload
+            ContentType: videoFile.mimetype,
         };
         await r2.send(new PutObjectCommand(videoUploadParams));
 
@@ -303,6 +290,11 @@ app.post('/upload_video', upload.fields([
     } catch (error) {
         console.error('Upload Error:', error);
         res.status(500).send('Video upload failed.');
+    } finally {
+        // Clean up the temporary file on disk
+        if (req.files.videoFile && req.files.videoFile[0]) {
+            await unlinkFile(req.files.videoFile[0].path).catch(err => console.error('Error deleting temp file:', err));
+        }
     }
 });
 
@@ -327,3 +319,4 @@ app.post('/api/login', async (req, res) => {
 app.listen(process.env.PORT || port, () => {
     console.log(`Server listening at http://localhost:${process.env.PORT || port}`);
 });
+
