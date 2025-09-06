@@ -182,27 +182,6 @@ app.get('/api/thumbnails/:fileName', async (req, res) => {
     }
 });
 
-// NEW ROUTE: Server-side proxy for fetching and serving videos
-app.get('/api/videos/:fileName', async (req, res) => {
-    try {
-        const { fileName } = req.params;
-        const getCommand = new GetObjectCommand({
-            Bucket: R2_BUCKET_NAME,
-            Key: `videos/${fileName}`
-        });
-        const { Body, ContentType, ContentLength } = await r2.send(getCommand);
-        
-        res.set('Content-Type', ContentType);
-        res.set('Content-Length', ContentLength);
-        res.set('Cross-Origin-Resource-Policy', 'cross-origin');
-
-        Body.pipe(res);
-    } catch (error) {
-        console.error('Error serving video:', error);
-        res.status(404).send('Video not found.');
-    }
-});
-
 
 // New route to handle video uploads with Cloudflare R2.
 app.post('/upload_video', upload.fields([
@@ -301,8 +280,8 @@ app.post('/upload_video', upload.fields([
             id: `vid${Date.now()}`,
             title: videoTitle,
             creator: creatorName,
-            // Use the dynamic host to create the URL
-            videoUrl: `${req.protocol}://${req.get('host')}/api/videos/${videoFileName}`,
+            // Use the direct R2 URL to display the video, reducing server bandwidth
+            videoUrl: `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${R2_BUCKET_NAME}/videos/${videoFileName}`,
             // We now point the thumbnail to the new local proxy route.
             thumbnailUrl: `${req.protocol}://${req.get('host')}/api/thumbnails/${thumbnailFileName}`
         };
