@@ -1,4 +1,4 @@
-/ Import the 'express' module to create the server.
+// Import the 'express' module to create the server.
 const express = require('express');
 
 // The 'path' module is a built-in Node.js module used for working with file and directory paths.
