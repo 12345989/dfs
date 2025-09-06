@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #121212;
+            color: #e0e0e0;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        .login-container {
+            background-color: #1e1e1e;
+            padding: 2.5rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+        }
+
+        h1 {
+            color: white;
+            margin-bottom: 1.5rem;
+        }
+
+        .input-group {
+            margin-bottom: 1rem;
+            text-align: left;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: bold;
+            color: #a0a0a0;
+        }
+
+        input[type="text"], input[type="password"] {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #444;
+            background-color: #2a2a2a;
+            color: #e0e0e0;
+            border-radius: 6px;
+            box-sizing: border-box;
+            transition: border-color 0.2s;
+        }
+
+        input[type="text"]:focus, input[type="password"]:focus {
+            outline: none;
+            border-color: #007bff;
+        }
+
+        .submit-button, .sign-out-button {
+            width: 100%;
+            padding: 0.75rem;
+            border: none;
+            background-color: #0056b3;
+            color: white;
+            font-size: 1rem;
+            font-weight: bold;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background-color 0.2s, transform 0.2s;
+            margin-top: 1rem;
+        }
+
+        .submit-button:hover, .sign-out-button:hover {
+            background-color: #007bff;
+            transform: translateY(-1px);
+        }
+
+        #message {
+            margin-top: 1rem;
+            font-weight: bold;
+        }
+
+        #loggedInMessage {
+            margin-top: 1rem;
+            font-size: 1.1rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <h1>Login</h1>
+        <div id="loginForm">
+            <div class="input-group">
+                <label for="username">Username</label>
+                <input type="text" id="username" required>
+            </div>
+            <div class="input-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" required>
+            </div>
+            <button id="loginBtn" class="submit-button">Log In</button>
+            <p id="message"></p>
+        </div>
+        <div id="loggedInView" style="display: none;">
+            <p id="loggedInMessage"></p>
+            <button id="signOutBtn" class="sign-out-button">Sign Out</button>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const loginForm = document.getElementById('loginForm');
+            const loggedInView = document.getElementById('loggedInView');
+            const loggedInMessage = document.getElementById('loggedInMessage');
+            const signOutBtn = document.getElementById('signOutBtn');
+            const loginBtn = document.getElementById('loginBtn');
+            const usernameInput = document.getElementById('username');
+            const passwordInput = document.getElementById('password');
+            const messageElem = document.getElementById('message');
+
+            function updateUI() {
+                const creatorName = localStorage.getItem('creatorName');
+                if (creatorName) {
+                    loggedInMessage.textContent = `You are logged in as ${creatorName}.`;
+                    loginForm.style.display = 'none';
+                    loggedInView.style.display = 'block';
+                } else {
+                    loginForm.style.display = 'block';
+                    loggedInView.style.display = 'none';
+                }
+            }
+
+            loginBtn.addEventListener('click', async () => {
+                const username = usernameInput.value;
+                const password = passwordInput.value;
+
+                if (!username || !password) {
+                    messageElem.textContent = 'Please enter both username and password.';
+                    messageElem.style.color = '#ff6b6b';
+                    return;
+                }
+
+                try {
+                    const response = await fetch('/api/login', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ username, password }),
+                    });
+
+                    const result = await response.json();
+                    
+                    if (response.ok) {
+                        localStorage.setItem('creatorName', result.displayName);
+                        messageElem.textContent = 'Login successful!';
+                        messageElem.style.color = '#6bff93';
+                        setTimeout(() => {
+                            window.location.href = '/';
+                        }, 1000);
+                    } else {
+                        messageElem.textContent = result.message || 'Login failed.';
+                        messageElem.style.color = '#ff6b6b';
+                    }
+                } catch (error) {
+                    messageElem.textContent = 'An error occurred. Please try again later.';
+                    messageElem.style.color = '#ff6b6b';
+                    console.error('Login error:', error);
+                }
+            });
+
+            signOutBtn.addEventListener('click', () => {
+                localStorage.removeItem('creatorName');
+                window.location.href = '/login';
+            });
+            
+            updateUI();
+        });
+    </script>
+</body>
+</html>

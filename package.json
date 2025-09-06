@@ -1,0 +1,16 @@
+{
+  "name": "video-app",
+  "version": "1.0.0",
+  "description": "A simple video streaming application.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.x",
+    "dotenv": "^16.x",
+    "express": "^4.x",
+    "fluent-ffmpeg": "^2.x",
+    "multer": "^1.x"
+  }
+}
