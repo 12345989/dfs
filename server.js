@@ -15,6 +15,9 @@ const stream = require('stream');
 // Promisify fs.unlink to use it with async/await
 const unlinkFile = util.promisify(fs.unlink);
 
+// Promisify fs.promises.rename
+const renameFile = util.promisify(fs.promises.rename);
+
 // Load environment variables from a .env file.
 require('dotenv').config();
 
@@ -27,6 +30,19 @@ const ffmpeg = require('fluent-ffmpeg');
 // Set the path to the ffmpeg executable if it's not in your system's PATH.
 // You might need this on certain platforms.
 // ffmpeg.setFfmpegPath('/path/to/ffmpeg');
+
+// --- START: ENSURE DIRECTORIES EXIST ON SERVER DEPLOY ---
+// Multer and other file operations will fail if these directories aren't present.
+// This ensures they are created every time the server starts.
+const uploadDir = 'uploads/';
+if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+}
+const publicDir = 'public/';
+if (!fs.existsSync(publicDir)) {
+    fs.mkdirSync(publicDir, { recursive: true });
+}
+// --- END: ENSURE DIRECTORIES EXIST ---
 
 // R2 credentials from environment variables for security.
 const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID;
@@ -189,8 +205,11 @@ app.post('/upload_video', upload.fields([
     { name: 'videoFile', maxCount: 1 },
     { name: 'thumbnailFile', maxCount: 1 }
 ]), async (req, res) => {
+    // A temporary path for the converted video file
+    let originalVideoPath = null;
+    let originalThumbnailPath = null;
+
     try {
-        // The file is now on disk, not in memory
         const videoFile = req.files.videoFile[0];
         const thumbnailFile = req.files.thumbnailFile ? req.files.thumbnailFile[0] : null;
         const videoTitle = req.body.videoTitle;
@@ -200,22 +219,20 @@ app.post('/upload_video', upload.fields([
             return res.status(400).send('Missing video file, title, or creator name.');
         }
 
+        originalVideoPath = videoFile.path;
+        
         let thumbnailFileName;
         let thumbnailBuffer;
-        
-        // Use a temporary variable to hold the thumbnail path for cleanup
-        let thumbnailPathToCleanup = null;
 
         if (thumbnailFile) {
-            // New logic: Convert custom thumbnail to PNG using ffmpeg
+            originalThumbnailPath = thumbnailFile.path;
+            // Convert custom thumbnail to PNG using ffmpeg
             thumbnailFileName = `thumb-custom-${Date.now()}.png`;
-            thumbnailPathToCleanup = thumbnailFile.path;
-
             thumbnailBuffer = await new Promise((resolve, reject) => {
                 const buffers = [];
                 ffmpeg()
-                    .input(thumbnailFile.path) 
-                    .outputOptions('-f', 'image2pipe') 
+                    .input(originalThumbnailPath)
+                    .outputOptions('-f', 'image2pipe')
                     .outputOptions('-vcodec', 'png')
                     .on('error', (err) => {
                         console.error('Error converting custom thumbnail:', err);
@@ -228,18 +245,17 @@ app.post('/upload_video', upload.fields([
                     .on('data', chunk => buffers.push(chunk))
                     .on('end', () => {});
             });
-
         } else {
             // Generate a thumbnail from the temp file on disk
             thumbnailFileName = `thumb-${Date.now()}.png`;
             thumbnailBuffer = await new Promise((resolve, reject) => {
                 const buffers = [];
                 ffmpeg()
-                    .input(videoFile.path) // Read input from the temp file on disk
-                    .seekInput('0:05') 
+                    .input(originalVideoPath)
+                    .seekInput('0:05')
                     .frames(1)
                     .size('400x225')
-                    .outputOptions('-f', 'image2pipe') 
+                    .outputOptions('-f', 'image2pipe')
                     .outputOptions('-vcodec', 'png')
                     .on('error', (err) => {
                         console.error('Error generating thumbnail:', err);
@@ -263,29 +279,21 @@ app.post('/upload_video', upload.fields([
         };
         await r2.send(new PutObjectCommand(thumbnailUploadParams));
 
-        // Start the video conversion and upload using a stream
+        // --- VIDEO UPLOAD LOGIC ---
+        // NOTE: The video conversion step has been removed.
+        // The original video file will now be uploaded directly to R2.
+        // This means only web-compatible video formats (e.g., MP4 with H.264)
+        // will be playable. The server will not convert other formats.
+        
         const videoFileName = `video-${Date.now()}.mp4`;
-        const videoPassThrough = new stream.PassThrough();
-
-        // New FFmpeg process to convert the video to a web-compatible format
-        const ffmpegProcess = ffmpeg(videoFile.path)
-            .outputFormat('mp4')
-            .videoCodec('libx264')
-            .audioCodec('aac')
-            .on('error', (err) => {
-                console.error('Error converting video:', err);
-                videoPassThrough.emit('error', err);
-            })
-            .pipe(videoPassThrough);
-
-        // Upload the video to R2 using the output stream of FFmpeg
         const videoUploadParams = {
             Bucket: R2_BUCKET_NAME,
             Key: `videos/${videoFileName}`,
-            Body: videoPassThrough, // Use the stream for efficient upload
+            Body: fs.createReadStream(originalVideoPath),
             ContentType: 'video/mp4',
         };
         await r2.send(new PutObjectCommand(videoUploadParams));
+        // --- END OF VIDEO UPLOAD LOGIC ---
 
         // Save the video metadata to our JSON file.
         const videos = await readVideoData();
@@ -306,12 +314,12 @@ app.post('/upload_video', upload.fields([
         console.error('Upload Error:', error);
         res.status(500).send('Video upload failed.');
     } finally {
-        // Clean up the temporary file on disk
-        if (req.files.videoFile && req.files.videoFile[0]) {
-            await unlinkFile(req.files.videoFile[0].path).catch(err => console.error('Error deleting temp video file:', err));
+        // Clean up all temporary files on disk
+        if (originalVideoPath) {
+            await unlinkFile(originalVideoPath).catch(err => console.error('Error deleting original temp video file:', err));
         }
-        if (req.files.thumbnailFile && req.files.thumbnailFile[0]) {
-            await unlinkFile(req.files.thumbnailFile[0].path).catch(err => console.error('Error deleting temp thumbnail file:', err));
+        if (originalThumbnailPath) {
+            await unlinkFile(originalThumbnailPath).catch(err => console.error('Error deleting original temp thumbnail file:', err));
         }
     }
 });
