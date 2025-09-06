@@ -270,7 +270,9 @@ app.post('/upload_video', upload.fields([
             Bucket: R2_BUCKET_NAME,
             Key: `videos/${videoFileName}`,
             Body: videoUploadStream, // Use the stream for efficient upload
-            ContentType: videoFile.mimetype,
+            // The MIME type is explicitly set to 'video/mp4' to ensure browser compatibility.
+            // This is a common practice to fix playback issues on different devices.
+            ContentType: 'video/mp4',
         };
         await r2.send(new PutObjectCommand(videoUploadParams));
 
