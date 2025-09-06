@@ -222,10 +222,33 @@ app.post('/upload_video', upload.fields([
 
         let thumbnailFileName;
         let thumbnailBuffer;
+        
+        // Use a temporary variable to hold the thumbnail path for cleanup
+        let thumbnailPathToCleanup = null;
 
         if (thumbnailFile) {
-            thumbnailFileName = `${Date.now()}-${thumbnailFile.originalname}`;
-            thumbnailBuffer = thumbnailFile.buffer;
+            // New logic: Convert custom thumbnail to PNG using ffmpeg
+            thumbnailFileName = `thumb-custom-${Date.now()}.png`;
+            thumbnailPathToCleanup = thumbnailFile.path;
+
+            thumbnailBuffer = await new Promise((resolve, reject) => {
+                const buffers = [];
+                ffmpeg()
+                    .input(thumbnailFile.path) 
+                    .outputOptions('-f', 'image2pipe') 
+                    .outputOptions('-vcodec', 'png')
+                    .on('error', (err) => {
+                        console.error('Error converting custom thumbnail:', err);
+                        reject(err);
+                    })
+                    .on('end', () => {
+                        resolve(Buffer.concat(buffers));
+                    })
+                    .pipe(new stream.PassThrough())
+                    .on('data', chunk => buffers.push(chunk))
+                    .on('end', () => {});
+            });
+
         } else {
             // Generate a thumbnail from the temp file on disk
             thumbnailFileName = `thumb-${Date.now()}.png`;
@@ -293,7 +316,10 @@ app.post('/upload_video', upload.fields([
     } finally {
         // Clean up the temporary file on disk
         if (req.files.videoFile && req.files.videoFile[0]) {
-            await unlinkFile(req.files.videoFile[0].path).catch(err => console.error('Error deleting temp file:', err));
+            await unlinkFile(req.files.videoFile[0].path).catch(err => console.error('Error deleting temp video file:', err));
+        }
+        if (req.files.thumbnailFile && req.files.thumbnailFile[0]) {
+            await unlinkFile(req.files.thumbnailFile[0].path).catch(err => console.error('Error deleting temp thumbnail file:', err));
         }
     }
 });
@@ -319,4 +345,3 @@ app.post('/api/login', async (req, res) => {
 app.listen(process.env.PORT || port, () => {
     console.log(`Server listening at http://localhost:${process.env.PORT || port}`);
 });
-
