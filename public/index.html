@@ -1,4 +1,4 @@
-<DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -48,6 +48,52 @@
         .login-button:hover, .sign-out-button:hover, .upload-button:hover {
             background-color: #007bff;
             transform: translateY(-1px);
+        }
+        
+        /* New search bar styles */
+        .search-container {
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            margin-top: 70px; /* Offset from fixed header */
+            padding: 0 20px;
+        }
+
+        .search-container form {
+            display: flex;
+            width: 100%;
+            max-width: 600px;
+            background-color: #1e1e1e;
+            border-radius: 25px;
+            overflow: hidden;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+        }
+
+        .search-input {
+            flex-grow: 1;
+            border: none;
+            background-color: transparent;
+            padding: 0.75rem 1.5rem;
+            font-size: 1rem;
+            color: #e0e0e0;
+            outline: none;
+        }
+
+        .search-input::placeholder {
+            color: #a0a0a0;
+        }
+
+        .search-button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .search-button:hover {
+            background-color: #0056b3;
         }
 
         .container {
@@ -142,6 +188,14 @@
 
     <div class="container">
         <h1 class="page-title">Videos</h1>
+        
+        <div class="search-container">
+            <form id="searchForm" action="/search.html" method="GET">
+                <input type="text" name="q" placeholder="Search for videos..." class="search-input">
+                <button type="submit" class="search-button">Search</button>
+            </form>
+        </div>
+
         <div id="videoList" class="video-list">
             <!-- Video cards will be dynamically added here -->
         </div>
