@@ -33,11 +33,12 @@ const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID;
 const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID;
 const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY;
 const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME;
+const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL;
 
 // Check if all necessary environment variables are set.
-if (!R2_ACCOUNT_ID || !R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY || !R2_BUCKET_NAME) {
+if (!R2_ACCOUNT_ID || !R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY || !R2_BUCKET_NAME || !R2_PUBLIC_URL) {
     console.error("Error: Missing Cloudflare R2 credentials in the .env file.");
-    console.error("Please ensure R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, and R2_BUCKET_NAME are set.");
+    console.error("Please ensure R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME, and R2_PUBLIC_URL are set.");
     process.exit(1); // Exit the process if credentials are not found.
 }
 
@@ -262,16 +263,26 @@ app.post('/upload_video', upload.fields([
         };
         await r2.send(new PutObjectCommand(thumbnailUploadParams));
 
-        // Skip the video conversion and upload the original file directly
+        // Start the video conversion and upload using a stream
         const videoFileName = `video-${Date.now()}.mp4`;
-        const videoUploadStream = fs.createReadStream(videoFile.path);
+        const videoPassThrough = new stream.PassThrough();
 
+        // New FFmpeg process to convert the video to a web-compatible format
+        const ffmpegProcess = ffmpeg(videoFile.path)
+            .outputFormat('mp4')
+            .videoCodec('libx264')
+            .audioCodec('aac')
+            .on('error', (err) => {
+                console.error('Error converting video:', err);
+                videoPassThrough.emit('error', err);
+            })
+            .pipe(videoPassThrough);
+
+        // Upload the video to R2 using the output stream of FFmpeg
         const videoUploadParams = {
             Bucket: R2_BUCKET_NAME,
             Key: `videos/${videoFileName}`,
-            Body: videoUploadStream, // Use the stream for efficient upload
-            // The MIME type is explicitly set to 'video/mp4' to ensure browser compatibility.
-            // This is a common practice to fix playback issues on different devices.
+            Body: videoPassThrough, // Use the stream for efficient upload
             ContentType: 'video/mp4',
         };
         await r2.send(new PutObjectCommand(videoUploadParams));
@@ -282,8 +293,8 @@ app.post('/upload_video', upload.fields([
             id: `vid${Date.now()}`,
             title: videoTitle,
             creator: creatorName,
-            // Use the direct R2 URL to display the video, reducing server bandwidth
-            videoUrl: `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${R2_BUCKET_NAME}/videos/${videoFileName}`,
+            // Use the direct R2 public URL to display the video, reducing server bandwidth
+            videoUrl: `${R2_PUBLIC_URL}/videos/${videoFileName}`,
             // We now point the thumbnail to the new local proxy route.
             thumbnailUrl: `${req.protocol}://${req.get('host')}/api/thumbnails/${thumbnailFileName}`
         };
