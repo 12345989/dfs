@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Search Results</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #121212;
+            color: #e0e0e0;
+            margin: 0;
+            padding: 0;
+        }
+
+        .header {
+            width: 100%;
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            padding: 1rem 2rem;
+            gap: 1rem;
+            position: fixed;
+            top: 0;
+            right: 0;
+            background-color: #121212;
+            z-index: 100;
+        }
+
+        .header-text {
+            font-weight: bold;
+            color: #a0a0a0;
+            font-size: 0.9rem;
+        }
+
+        .login-button, .sign-out-button, .upload-button, .videos-button {
+            background-color: #0056b3;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            text-decoration: none;
+            transition: background-color 0.2s, transform 0.2s;
+            font-size: 0.9rem;
+        }
+        
+        .login-button:hover, .sign-out-button:hover, .upload-button:hover, .videos-button:hover {
+            background-color: #007bff;
+            transform: translateY(-1px);
+        }
+
+        .container {
+            padding: 80px 20px 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+        
+        /* Search bar styles */
+        .search-container {
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            margin-top: 100px;
+            padding: 0 20px;
+        }
+
+        .search-container form {
+            display: flex;
+            width: 100%;
+            max-width: 600px;
+            background-color: #1e1e1e;
+            border-radius: 25px;
+            overflow: hidden;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+        }
+
+        .search-input {
+            flex-grow: 1;
+            border: none;
+            background-color: transparent;
+            padding: 0.75rem 1.5rem;
+            font-size: 1rem;
+            color: #e0e0e0;
+            outline: none;
+        }
+
+        .search-input::placeholder {
+            color: #a0a0a0;
+        }
+
+        .search-button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .search-button:hover {
+            background-color: #0056b3;
+        }
+
+        .video-list {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .video-card {
+            background-color: #1e1e1e;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+            transition: transform 0.2s, box-shadow 0.2s;
+            width: 200px;
+            text-decoration: none;
+            color: #e0e0e0;
+        }
+
+        .video-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.6);
+        }
+
+        .video-thumbnail {
+            width: 100%;
+            height: 168px;
+            object-fit: cover;
+        }
+
+        .video-info {
+            padding: 1rem;
+            text-align: left;
+        }
+
+        .video-title {
+            font-size: 1.1rem;
+            font-weight: bold;
+            margin: 0 0 0.5rem 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .video-creator {
+            font-size: 0.9rem;
+            color: #a0a0a0;
+        }
+        
+        a.creator-link {
+            text-decoration: none;
+            color: #a0a0a0;
+            transition: color 0.2s;
+        }
+
+        a.creator-link:hover {
+            color: #007bff;
+            text-decoration: underline;
+        }
+
+        .empty-state {
+            text-align: center;
+            margin-top: 50px;
+            color: #a0a0a0;
+        }
+        
+        h1.page-title {
+            color: white;
+            margin-top: 2rem;
+            font-size: 2.5rem;
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <a href="/" class="videos-button">All Videos</a>
+        <span id="loggedInAs" class="header-text" style="display:none;"></span>
+        <button id="signOutButton" class="sign-out-button" style="display:none;">Sign Out</button>
+        <a id="loginButton" href="/login" class="login-button" style="display:none;">Log In</a>
+        <a href="/upload" class="upload-button">Upload</a>
+    </div>
+
+    <div class="container">
+        <div class="search-container">
+            <form id="searchForm" action="/search.html" method="GET">
+                <input type="text" id="searchInput" name="q" placeholder="Search for videos..." class="search-input">
+                <button type="submit" class="search-button">Search</button>
+            </form>
+        </div>
+        <h1 class="page-title" id="resultsTitle"></h1>
+        <div id="videoList" class="video-list">
+            <!-- Search results will be added here -->
+        </div>
+        <div id="emptyState" class="empty-state" style="display:none;">
+            No videos found.
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            // Header logic
+            const creatorName = localStorage.getItem('creatorName');
+            const loggedInAs = document.getElementById('loggedInAs');
+            const signOutButton = document.getElementById('signOutButton');
+            const loginButton = document.getElementById('loginButton');
+
+            if (creatorName) {
+                loggedInAs.textContent = `Logged in as ${creatorName}`;
+                loggedInAs.style.display = 'inline';
+                signOutButton.style.display = 'inline';
+                loginButton.style.display = 'none';
+            } else {
+                loggedInAs.style.display = 'none';
+                signOutButton.style.display = 'none';
+                loginButton.style.display = 'inline';
+            }
+
+            signOutButton.addEventListener('click', () => {
+                localStorage.removeItem('creatorName');
+                window.location.href = '/login';
+            });
+
+            const urlParams = new URLSearchParams(window.location.search);
+            const query = urlParams.get('q');
+            const resultsTitle = document.getElementById('resultsTitle');
+            const videoList = document.getElementById('videoList');
+            const emptyState = document.getElementById('emptyState');
+            const searchInput = document.getElementById('searchInput');
+
+            // Set the search bar value from the URL query
+            if (query) {
+                searchInput.value = query;
+            }
+
+            if (!query) {
+                resultsTitle.textContent = 'Please enter a search term.';
+                emptyState.textContent = 'Use the search bar to find videos.';
+                emptyState.style.display = 'block';
+                return;
+            }
+
+            resultsTitle.textContent = `Search results for "${query}"`;
+            
+            try {
+                const response = await fetch('/api/videos');
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                const videos = await response.json();
+                
+                const lowerCaseQuery = query.toLowerCase();
+                const filteredVideos = videos.filter(video =>
+                    video.title.toLowerCase().includes(lowerCaseQuery) ||
+                    (video.creator && video.creator.toLowerCase().includes(lowerCaseQuery))
+                );
+                
+                if (filteredVideos.length === 0) {
+                    emptyState.textContent = 'No videos found matching your search.';
+                    emptyState.style.display = 'block';
+                } else {
+                    filteredVideos.forEach(video => {
+                        const videoCard = document.createElement('a');
+                        videoCard.href = `/watch?id=${video.id}`;
+                        videoCard.className = 'video-card';
+                        videoCard.innerHTML = `
+                            <img src="${video.thumbnailUrl}" alt="Thumbnail for ${video.title}" class="video-thumbnail">
+                            <div class="video-info">
+                                <h3 class="video-title">${video.title}</h3>
+                                <p class="video-creator">by <a href="/creator?name=${encodeURIComponent(video.creator)}" class="creator-link">${video.creator}</a></p>
+                            </div>
+                        `;
+                        videoList.appendChild(videoCard);
+                    });
+                }
+            } catch (error) {
+                console.error('Failed to fetch videos:', error);
+                resultsTitle.textContent = 'An error occurred.';
+                emptyState.textContent = 'Failed to load videos. Please try again later.';
+                emptyState.style.display = 'block';
+            }
+        });
+    </script>
+</body>
+</html>
