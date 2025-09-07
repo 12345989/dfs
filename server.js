@@ -1,13 +1,7 @@
-// Import the 'express' module to create the server.
+// Import necessary modules
 const express = require('express');
-
-// The 'path' module is a built-in Node.js module used for working with file and directory paths.
 const path = require('path');
-
-// Multer is middleware for handling multipart/form-data, which is primarily used for uploading files.
 const multer = require('multer');
-
-// The fs and util modules are needed for file system operations.
 const fs = require('fs');
 const util = require('util');
 const stream = require('stream');
@@ -15,22 +9,19 @@ const stream = require('stream');
 // Promisify fs.unlink to use it with async/await
 const unlinkFile = util.promisify(fs.unlink);
 
-// Load environment variables from a .env file.
+// Load environment variables from a .env file
 require('dotenv').config();
 
-// AWS SDK for connecting to S3-compatible services like Cloudflare R2.
+// AWS SDK for connecting to S3-compatible services like Cloudflare R2
 const { S3Client, PutObjectCommand, GetObjectCommand } = require("@aws-sdk/client-s3");
 
-// Fluent-ffmpeg for video processing and thumbnail generation.
+// Fluent-ffmpeg for video processing and thumbnail generation
 const ffmpeg = require('fluent-ffmpeg');
 
-// --- NEW POSTGRES IMPORTS ---
-const { Client } = require('pg');
-// --- END NEW POSTGRES IMPORTS ---
-
-// Set the path to the ffmpeg executable if it's not in your system's PATH.
-// You might need this on certain platforms.
-// ffmpeg.setFfmpegPath('/path/to/ffmpeg');
+// --- POSTGRES IMPORTS ---
+// Using a Pool is better for production servers as it manages connections more efficiently.
+const { Pool } = require('pg');
+// --- END POSTGRES IMPORTS ---
 
 // --- START: ENSURE DIRECTORIES EXIST ON SERVER DEPLOY ---
 // Multer and other file operations will fail if these directories aren't present.
@@ -53,17 +44,17 @@ const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME;
 const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL;
 
 // --- POSTGRES CLIENT SETUP ---
-let pgClient;
+let pool;
 
 const connectToPostgres = async () => {
     try {
-        pgClient = new Client({
+        pool = new Pool({
             connectionString: process.env.DATABASE_URL,
             ssl: {
                 rejectUnauthorized: false
             }
         });
-        await pgClient.connect();
+        await pool.query('SELECT NOW()'); // Test the connection
         console.log('Successfully connected to PostgreSQL!');
     } catch (error) {
         console.error('Failed to connect to PostgreSQL. Please check your DATABASE_URL environment variable.');
@@ -92,8 +83,8 @@ const createTables = async () => {
                 display_name VARCHAR(255)
             );
         `;
-        await pgClient.query(createVideosTableQuery);
-        await pgClient.query(createUsersTableQuery);
+        await pool.query(createVideosTableQuery);
+        await pool.query(createUsersTableQuery);
         console.log('Videos and users tables created successfully (if they did not exist).');
     } catch (error) {
         console.error('Failed to create tables:', error);
@@ -102,19 +93,18 @@ const createTables = async () => {
 }
 // --- END POSTGRES SETUP ---
 
-
 // Connect to the database and create index on server startup
 const initializeServer = async () => {
     await connectToPostgres();
     await createTables();
-    
+
     // Check if all necessary environment variables are set.
     if (!R2_ACCOUNT_ID || !R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY || !R2_BUCKET_NAME || !R2_PUBLIC_URL) {
         console.error("Error: Missing Cloudflare R2 credentials in the .env file.");
         console.error("Please ensure R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME, and R2_PUBLIC_URL are set.");
         process.exit(1); // Exit the process if credentials are not found.
     }
-    
+
     // Create an instance of the Express application.
     const app = express();
     const port = 3000;
@@ -160,11 +150,27 @@ const initializeServer = async () => {
     // API route to get a list of videos from Postgres.
     app.get('/api/videos', async (req, res) => {
         try {
-            const result = await pgClient.query('SELECT * FROM videos ORDER BY uploaded_at DESC');
+            const result = await pool.query('SELECT * FROM videos ORDER BY uploaded_at DESC');
             res.json(result.rows);
         } catch (error) {
             console.error('Error fetching videos from Postgres:', error);
             res.status(500).json({ error: 'Failed to fetch videos' });
+        }
+    });
+
+    // API route to get a single video by ID
+    app.get('/api/videos/:id', async (req, res) => {
+        const { id } = req.params;
+        try {
+            const result = await pool.query('SELECT * FROM videos WHERE id = $1', [id]);
+            if (result.rows.length > 0) {
+                res.json(result.rows[0]);
+            } else {
+                res.status(404).send('Video not found.');
+            }
+        } catch (error) {
+            console.error('Error fetching video by ID:', error);
+            res.status(500).send('Error fetching video.');
         }
     });
 
@@ -177,7 +183,7 @@ const initializeServer = async () => {
 
         try {
             const query = 'SELECT * FROM videos WHERE creator = $1 ORDER BY uploaded_at DESC';
-            const result = await pgClient.query(query, [creatorName]);
+            const result = await pool.query(query, [creatorName]);
             res.json(result.rows);
         } catch (error) {
             console.error('Error fetching videos by creator from Postgres:', error);
@@ -192,8 +198,8 @@ const initializeServer = async () => {
             // NOTE: This is a simplified login. In a real application, you should use
             // password hashing (e.g., bcrypt) instead of plain text passwords.
             const query = 'SELECT * FROM users WHERE username = $1 AND password = $2';
-            const result = await pgClient.query(query, [username, password]);
-            
+            const result = await pool.query(query, [username, password]);
+
             if (result.rows.length > 0) {
                 const user = result.rows[0];
                 res.status(200).json({ message: 'Login successful', displayName: user.display_name });
@@ -215,7 +221,7 @@ const initializeServer = async () => {
                 Key: `thumbnails/${fileName}`
             });
             const { Body, ContentType } = await r2.send(getCommand);
-            
+
             // Set the necessary headers for the browser
             res.set('Content-Type', ContentType);
             res.set('Cross-Origin-Resource-Policy', 'cross-origin');
@@ -236,6 +242,7 @@ const initializeServer = async () => {
         // A temporary path for the uploaded files
         let originalVideoPath = null;
         let originalThumbnailPath = null;
+        let thumbnailPathToUpload = null;
 
         try {
             const videoFile = req.files.videoFile[0];
@@ -248,66 +255,48 @@ const initializeServer = async () => {
             }
 
             originalVideoPath = videoFile.path;
-            
-            let thumbnailFileName;
-            let thumbnailBuffer;
 
+            // Step 1: Handle thumbnail generation/upload
+            let thumbnailFileName;
             if (thumbnailFile) {
+                // Use the custom thumbnail
                 originalThumbnailPath = thumbnailFile.path;
-                // Convert custom thumbnail to PNG using ffmpeg
                 thumbnailFileName = `thumb-custom-${Date.now()}.png`;
-                thumbnailBuffer = await new Promise((resolve, reject) => {
-                    const buffers = [];
-                    ffmpeg()
-                        .input(originalThumbnailPath)
-                        .outputOptions('-f', 'image2pipe')
-                        .outputOptions('-vcodec', 'png')
-                        .on('error', (err) => {
-                            console.error('Error converting custom thumbnail:', err);
-                            reject(err);
-                        })
-                        .on('end', () => {
-                            resolve(Buffer.concat(buffers));
-                        })
-                        .pipe(new stream.PassThrough())
-                        .on('data', chunk => buffers.push(chunk))
-                        .on('end', () => {});
+                thumbnailPathToUpload = path.join(uploadDir, thumbnailFileName);
+                await new Promise((resolve, reject) => {
+                    ffmpeg(originalThumbnailPath)
+                        .output(thumbnailPathToUpload)
+                        .on('end', () => resolve())
+                        .on('error', (err) => reject(err))
+                        .run();
                 });
             } else {
-                // Generate a thumbnail from the temp file on disk
+                // Generate a thumbnail from the video
                 thumbnailFileName = `thumb-${Date.now()}.png`;
-                thumbnailBuffer = await new Promise((resolve, reject) => {
-                    const buffers = [];
-                    ffmpeg()
-                        .input(originalVideoPath)
-                        .seekInput('0:05')
-                        .frames(1)
-                        .size('400x225')
-                        .outputOptions('-f', 'image2pipe')
-                        .outputOptions('-vcodec', 'png')
-                        .on('error', (err) => {
-                            console.error('Error generating thumbnail:', err);
-                            reject(err);
+                thumbnailPathToUpload = path.join(uploadDir, thumbnailFileName);
+                await new Promise((resolve, reject) => {
+                    ffmpeg(originalVideoPath)
+                        .screenshots({
+                            timestamps: ['0:05'],
+                            filename: thumbnailFileName,
+                            folder: uploadDir,
+                            size: '400x225'
                         })
-                        .on('end', () => {
-                            resolve(Buffer.concat(buffers));
-                        })
-                        .pipe(new stream.PassThrough())
-                        .on('data', chunk => buffers.push(chunk))
-                        .on('end', () => {});
+                        .on('end', () => resolve())
+                        .on('error', (err) => reject(err));
                 });
             }
-            
-            // Upload the thumbnail to R2
+
+            // Step 2: Upload the thumbnail to R2
             const thumbnailUploadParams = {
                 Bucket: R2_BUCKET_NAME,
                 Key: `thumbnails/${thumbnailFileName}`,
-                Body: thumbnailBuffer,
+                Body: fs.createReadStream(thumbnailPathToUpload),
                 ContentType: 'image/png',
             };
             await r2.send(new PutObjectCommand(thumbnailUploadParams));
 
-            // --- VIDEO UPLOAD LOGIC ---
+            // Step 3: Upload the video to R2
             const videoFileName = `video-${Date.now()}.mp4`;
             const videoUploadParams = {
                 Bucket: R2_BUCKET_NAME,
@@ -316,17 +305,15 @@ const initializeServer = async () => {
                 ContentType: 'video/mp4',
             };
             await r2.send(new PutObjectCommand(videoUploadParams));
-            // --- END OF VIDEO UPLOAD LOGIC ---
 
-            // --- NEW: Save video metadata to Postgres ---
+            // Step 4: Save video metadata to Postgres
             const videoUrl = `${R2_PUBLIC_URL}/videos/${videoFileName}`;
             const thumbnailUrl = `${req.protocol}://${req.get('host')}/api/thumbnails/${thumbnailFileName}`;
             const insertQuery = `
                 INSERT INTO videos (title, creator, video_url, thumbnail_url)
                 VALUES ($1, $2, $3, $4);
             `;
-            await pgClient.query(insertQuery, [videoTitle, creatorName, videoUrl, thumbnailUrl]);
-            // --- END NEW ---
+            await pool.query(insertQuery, [videoTitle, creatorName, videoUrl, thumbnailUrl]);
 
             res.status(200).send('Video and metadata uploaded successfully.');
         } catch (error) {
@@ -335,10 +322,13 @@ const initializeServer = async () => {
         } finally {
             // Clean up all temporary files on disk
             if (originalVideoPath) {
-                await unlinkFile(originalVideoPath).catch(err => console.error('Error deleting original temp video file:', err));
+                await unlinkFile(originalVideoPath).catch(err => console.error('Error deleting temp video file:', err));
             }
             if (originalThumbnailPath) {
-                await unlinkFile(originalThumbnailPath).catch(err => console.error('Error deleting original temp thumbnail file:', err));
+                await unlinkFile(originalThumbnailPath).catch(err => console.error('Error deleting temp custom thumbnail file:', err));
+            }
+            if (thumbnailPathToUpload) {
+                await unlinkFile(thumbnailPathToUpload).catch(err => console.error('Error deleting temp thumbnail file:', err));
             }
         }
     });
