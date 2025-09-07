@@ -54,33 +54,33 @@
             padding: 80px 20px 20px;
             display: flex;
             flex-direction: column;
-            align-items: center;
+            align-items: center; /* This centers the video player container */
             gap: 20px;
         }
         
-        /* This container is now more flexible. We removed a fixed max-width here
-           and let the video's intrinsic size determine the container's size. */
+        /* The video player container now has explicit max-width and max-height
+           to constrain its overall size on larger screens. */
         .video-player-container {
             width: 100%;
+            max-width: 900px; 
             max-height: 80vh; 
             background-color: #000;
             border-radius: 12px;
             overflow: hidden;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
             
-            /* Center the video player */
+            /* Center the video player within this container if needed */
             display: flex;
             justify-content: center;
             align-items: center;
         }
 
         #videoPlayer {
-            /* We now use a max-width on the video element itself to limit
-               the size of horizontal videos, while letting vertical videos
-               use more height. object-fit: contain is what prevents stretching. */
+            /* This is the key change. The video element now takes up 100% of
+               its parent's width and height, but object-fit: contain prevents
+               it from stretching, so it correctly displays its own aspect ratio. */
             width: 100%;
             height: 100%;
-            max-width: 900px;
             object-fit: contain;
         }
 
