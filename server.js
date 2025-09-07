@@ -24,9 +24,9 @@ const { S3Client, PutObjectCommand, GetObjectCommand } = require("@aws-sdk/clien
 // Fluent-ffmpeg for video processing and thumbnail generation.
 const ffmpeg = require('fluent-ffmpeg');
 
-// --- NEW COUCHBASE IMPORTS ---
-const couchbase = require('couchbase');
-// --- END NEW COUCHBASE IMPORTS ---
+// --- NEW POSTGRES IMPORTS ---
+const { Client } = require('pg');
+// --- END NEW POSTGRES IMPORTS ---
 
 // Set the path to the ffmpeg executable if it's not in your system's PATH.
 // You might need this on certain platforms.
@@ -52,63 +52,61 @@ const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY;
 const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME;
 const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL;
 
-// --- UPDATED COUCHBASE CONNECTION DETAILS TO USE API KEY ---
-const connectionString = process.env.__capella_connection_string || 'couchbases://your-cluster-url.com';
-const apiKey = process.env.__capella_api_key || 'your-api-key';
-const apiSecret = process.env.__capella_api_secret || 'your-api-secret';
-const bucketName = 'video_platform';
+// --- POSTGRES CLIENT SETUP ---
+let pgClient;
 
-// Using a custom scope name
-const scopeName = 'video_scope';
-const videoCollectionName = 'videos';
-const usersCollectionName = 'users';
-
-let cluster;
-let videoCollection;
-let usersCollection;
-
-// Function to connect to Couchbase Capella
-const connectToCouchbase = async () => {
+const connectToPostgres = async () => {
     try {
-        cluster = await couchbase.connect(connectionString, {
-            authenticator: new couchbase.PasswordAuthenticator(apiKey, apiSecret),
-            timeouts: {
-                kvTimeout: 10000
+        pgClient = new Client({
+            connectionString: process.env.DATABASE_URL,
+            ssl: {
+                rejectUnauthorized: false
             }
         });
-        // Accessing the new custom scope and collections within it
-        videoCollection = cluster.bucket(bucketName).scope(scopeName).collection(videoCollectionName);
-        usersCollection = cluster.bucket(bucketName).scope(scopeName).collection(usersCollectionName);
-        console.log('Successfully connected to Couchbase Capella!');
+        await pgClient.connect();
+        console.log('Successfully connected to PostgreSQL!');
     } catch (error) {
-        // --- UPDATED ERROR LOGGING ---
-        console.error('Failed to connect to Couchbase Capella. Please check your connection string and credentials.');
+        console.error('Failed to connect to PostgreSQL. Please check your DATABASE_URL environment variable.');
         console.error('Connection Error Details:', error);
-        // --- END UPDATED ERROR LOGGING ---
         process.exit(1);
     }
 };
 
-// --- NEW FUNCTION TO CREATE PRIMARY INDEX ---
-const createPrimaryIndex = async () => {
-    const query = `CREATE PRIMARY INDEX \`#primary\` ON \`${bucketName}\`.\`${scopeName}\`.\`${videoCollectionName}\``;
+const createTables = async () => {
     try {
-        await cluster.query(query);
-        console.log(`Primary index created successfully on ${videoCollectionName} collection.`);
+        const createVideosTableQuery = `
+            CREATE TABLE IF NOT EXISTS videos (
+                id SERIAL PRIMARY KEY,
+                title VARCHAR(255) NOT NULL,
+                creator VARCHAR(255) NOT NULL,
+                video_url TEXT NOT NULL,
+                thumbnail_url TEXT,
+                uploaded_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+        `;
+        const createUsersTableQuery = `
+            CREATE TABLE IF NOT EXISTS users (
+                id SERIAL PRIMARY KEY,
+                username VARCHAR(255) UNIQUE NOT NULL,
+                password VARCHAR(255) NOT NULL,
+                display_name VARCHAR(255)
+            );
+        `;
+        await pgClient.query(createVideosTableQuery);
+        await pgClient.query(createUsersTableQuery);
+        console.log('Videos and users tables created successfully (if they did not exist).');
     } catch (error) {
-        // If the index already exists, this is not an error.
-        if (error.message.includes('already exists')) {
-            console.log('Primary index already exists. Skipping creation.');
-        } else {
-            console.error('Failed to create primary index:', error);
-        }
+        console.error('Failed to create tables:', error);
+        process.exit(1);
     }
 }
+// --- END POSTGRES SETUP ---
+
 
 // Connect to the database and create index on server startup
 const initializeServer = async () => {
-    await connectToCouchbase();
-    await createPrimaryIndex();
+    await connectToPostgres();
+    await createTables();
     
     // Check if all necessary environment variables are set.
     if (!R2_ACCOUNT_ID || !R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY || !R2_BUCKET_NAME || !R2_PUBLIC_URL) {
@@ -157,17 +155,15 @@ const initializeServer = async () => {
         res.sendFile(path.join(__dirname, 'public', 'login.html'));
     });
 
-    // --- UPDATED API ROUTES TO USE COUCHBASE ---
+    // --- UPDATED API ROUTES TO USE POSTGRES ---
 
-    // API route to get a list of videos from Couchbase.
+    // API route to get a list of videos from Postgres.
     app.get('/api/videos', async (req, res) => {
         try {
-            const query = `SELECT * FROM \`${bucketName}\`.\`${scopeName}\`.\`${videoCollectionName}\``;
-            const result = await cluster.query(query);
-            const videos = result.rows.map(row => row[videoCollectionName]);
-            res.json(videos);
+            const result = await pgClient.query('SELECT * FROM videos ORDER BY uploaded_at DESC');
+            res.json(result.rows);
         } catch (error) {
-            console.error('Error fetching videos from Couchbase:', error);
+            console.error('Error fetching videos from Postgres:', error);
             res.status(500).json({ error: 'Failed to fetch videos' });
         }
     });
@@ -180,35 +176,27 @@ const initializeServer = async () => {
         }
 
         try {
-            const query = `
-                SELECT * FROM \`${bucketName}\`.\`${scopeName}\`.\`${videoCollectionName}\` 
-                WHERE creator = $1
-            `;
-            const params = [creatorName];
-            const result = await cluster.query(query, { parameters: params });
-            const videos = result.rows.map(row => row[videoCollectionName]);
-            res.json(videos);
+            const query = 'SELECT * FROM videos WHERE creator = $1 ORDER BY uploaded_at DESC';
+            const result = await pgClient.query(query, [creatorName]);
+            res.json(result.rows);
         } catch (error) {
-            console.error('Error fetching videos by creator from Couchbase:', error);
+            console.error('Error fetching videos by creator from Postgres:', error);
             res.status(500).send('Error fetching videos.');
         }
     });
 
-    // Login API using Couchbase
+    // Login API using Postgres
     app.post('/api/login', async (req, res) => {
         try {
             const { username, password } = req.body;
-            const query = `
-                SELECT *
-                FROM \`${bucketName}\`.\`${scopeName}\`.\`${usersCollectionName}\` 
-                WHERE username = $1 AND password = $2
-            `;
-            const params = [username, password];
-            const result = await cluster.query(query, { parameters: params });
+            // NOTE: This is a simplified login. In a real application, you should use
+            // password hashing (e.g., bcrypt) instead of plain text passwords.
+            const query = 'SELECT * FROM users WHERE username = $1 AND password = $2';
+            const result = await pgClient.query(query, [username, password]);
             
             if (result.rows.length > 0) {
-                const user = result.rows[0][usersCollectionName];
-                res.status(200).json({ message: 'Login successful', displayName: user.name });
+                const user = result.rows[0];
+                res.status(200).json({ message: 'Login successful', displayName: user.display_name });
             } else {
                 res.status(401).json({ message: 'Invalid username or password' });
             }
@@ -330,16 +318,14 @@ const initializeServer = async () => {
             await r2.send(new PutObjectCommand(videoUploadParams));
             // --- END OF VIDEO UPLOAD LOGIC ---
 
-            // --- NEW: Save video metadata to Couchbase instead of R2 JSON file ---
-            const newVideo = {
-                id: couchbase.uuid(),
-                title: videoTitle,
-                creator: creatorName,
-                videoUrl: `${R2_PUBLIC_URL}/videos/${videoFileName}`,
-                thumbnailUrl: `${req.protocol}://${req.get('host')}/api/thumbnails/${thumbnailFileName}`,
-                uploadedAt: new Date().toISOString()
-            };
-            await videoCollection.insert(newVideo.id, newVideo);
+            // --- NEW: Save video metadata to Postgres ---
+            const videoUrl = `${R2_PUBLIC_URL}/videos/${videoFileName}`;
+            const thumbnailUrl = `${req.protocol}://${req.get('host')}/api/thumbnails/${thumbnailFileName}`;
+            const insertQuery = `
+                INSERT INTO videos (title, creator, video_url, thumbnail_url)
+                VALUES ($1, $2, $3, $4);
+            `;
+            await pgClient.query(insertQuery, [videoTitle, creatorName, videoUrl, thumbnailUrl]);
             // --- END NEW ---
 
             res.status(200).send('Video and metadata uploaded successfully.');
