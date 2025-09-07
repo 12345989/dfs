@@ -245,11 +245,11 @@
                         videoList.innerHTML = ''; // Clear existing content
                         videos.forEach(video => {
                             const videoCard = document.createElement('a');
-                            videoCard.href = `/watch?id=${video.id}`;
+                            videoCard.href = `/watch?id=${video.id}`; // Changed to correctly use the new id field
                             videoCard.className = 'video-card';
                             
                             videoCard.innerHTML = `
-                                <img src="${video.thumbnailUrl}" alt="Thumbnail for ${video.title}" class="video-thumbnail">
+                                <img src="${video.thumbnail_url}" alt="Thumbnail for ${video.title}" class="video-thumbnail">
                                 <div class="video-info">
                                     <h3 class="video-title">${video.title}</h3>
                                     <p class="video-creator">by <a href="/creator?name=${encodeURIComponent(video.creator)}" class="creator-link">${video.creator}</a></p>
