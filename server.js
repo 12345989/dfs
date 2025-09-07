@@ -82,7 +82,10 @@ const connectToCouchbase = async () => {
         usersCollection = cluster.bucket(bucketName).scope(scopeName).collection(usersCollectionName);
         console.log('Successfully connected to Couchbase Capella!');
     } catch (error) {
-        console.error('Failed to connect to Couchbase Capella:', error);
+        // --- UPDATED ERROR LOGGING ---
+        console.error('Failed to connect to Couchbase Capella. Please check your connection string and credentials.');
+        console.error('Connection Error Details:', error);
+        // --- END UPDATED ERROR LOGGING ---
         process.exit(1);
     }
 };
