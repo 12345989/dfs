@@ -52,10 +52,10 @@ const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY;
 const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME;
 const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL;
 
-// --- NEW COUCHBASE CONNECTION DETAILS ---
+// --- UPDATED COUCHBASE CONNECTION DETAILS TO USE API KEY ---
 const connectionString = process.env.__capella_connection_string || 'couchbases://your-cluster-url.com';
-const username = process.env.__capella_username || 'your-username';
-const password = process.env.__capella_password || 'your-password';
+const apiKey = process.env.__capella_api_key || 'your-api-key';
+const apiSecret = process.env.__capella_api_secret || 'your-api-secret';
 const bucketName = 'video_platform';
 
 // Using a custom scope name
@@ -71,8 +71,7 @@ let usersCollection;
 const connectToCouchbase = async () => {
     try {
         cluster = await couchbase.connect(connectionString, {
-            username: username,
-            password: password,
+            authenticator: new couchbase.PasswordAuthenticator(apiKey, apiSecret),
             timeouts: {
                 kvTimeout: 10000
             }
