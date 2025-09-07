@@ -106,7 +106,6 @@
             margin-top: 50px;
             color: #a0a0a0;
         }
-
     </style>
 </head>
 <body>
@@ -184,34 +183,28 @@
                 }
 
                 try {
-                    const response = await fetch('/api/videos');
+                    const response = await fetch(`/api/videos/${videoId}`);
                     if (!response.ok) {
-                        throw new Error('Failed to fetch video list');
+                        if (response.status === 404) {
+                            throw new Error('Video not found.');
+                        }
+                        throw new Error('Failed to fetch video data.');
                     }
-                    const videos = await response.json();
-                    const video = videos.find(v => v.id === videoId);
+                    const video = await response.json();
 
-                    if (video) {
-                        document.title = video.title;
-                        videoPlayer.src = video.videoUrl;
-                        videoPlayer.poster = video.thumbnailUrl;
-                        videoTitle.textContent = video.title;
-                        videoCreator.innerHTML = `by <a href="/creator?name=${encodeURIComponent(video.creator)}">${video.creator}</a>`;
-                        
-                        // Display the video and details
-                        loadingState.style.display = 'none';
-                        videoContainer.style.display = 'block';
-                        videoDetails.style.display = 'block';
-
-                    } else {
-                        loadingState.style.display = 'none';
-                        errorState.textContent = 'Video not found.';
-                        errorState.style.display = 'block';
-                    }
+                    document.title = video.title;
+                    videoPlayer.src = video.video_url;
+                    videoTitle.textContent = video.title;
+                    videoCreator.innerHTML = `by <a href="/creator?name=${encodeURIComponent(video.creator)}">${video.creator}</a>`;
+                    
+                    // Display the video and details
+                    loadingState.style.display = 'none';
+                    videoContainer.style.display = 'block';
+                    videoDetails.style.display = 'block';
                 } catch (error) {
                     console.error('Error loading video:', error);
                     loadingState.style.display = 'none';
-                    errorState.textContent = 'Failed to load video data.';
+                    errorState.textContent = error.message;
                     errorState.style.display = 'block';
                 }
             }
