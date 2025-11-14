@@ -3,270 +3,307 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Video Gallery</title>
+    <title>StreamHub</title>
     <style>
+        /* Basic Reset and Global Styles */
         body {
             font-family: Arial, sans-serif;
-            background-color: #121212;
-            color: #e0e0e0;
             margin: 0;
             padding: 0;
+            background-color: #f4f4f9;
+            color: #333;
         }
 
-        .header {
-            width: 100%;
+        header {
+            background-color: #2c3e50; /* Dark Blue */
+            color: white;
+            padding: 15px 20px;
             display: flex;
-            justify-content: flex-end;
+            justify-content: space-between;
             align-items: center;
-            padding: 1rem 2rem;
-            gap: 1rem;
-            position: fixed;
-            top: 0;
-            right: 0;
-            background-color: #121212;
-            z-index: 100;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         }
 
-        .header-text {
-            font-weight: bold;
-            color: #a0a0a0;
-            font-size: 0.9rem;
+        header h1 {
+            margin: 0;
+            font-size: 1.8em;
         }
 
-        .login-button, .sign-out-button, .upload-button {
-            background-color: #0056b3;
+        nav a {
             color: white;
-            border: none;
-            padding: 0.5rem 1rem;
-            border-radius: 6px;
-            cursor: pointer;
             text-decoration: none;
-            transition: background-color 0.2s, transform 0.2s;
-            font-size: 0.9rem;
-        }
-        
-        .login-button:hover, .sign-out-button:hover, .upload-button:hover {
-            background-color: #007bff;
-            transform: translateY(-1px);
-        }
-        
-        /* New search bar styles */
-        .search-container {
-            width: 100%;
-            display: flex;
-            justify-content: center;
-            margin-top: 70px; /* Offset from fixed header */
-            padding: 0 20px;
+            margin-left: 20px;
+            padding: 5px 10px;
+            border-radius: 5px;
+            transition: background-color 0.3s;
         }
 
-        .search-container form {
-            display: flex;
-            width: 100%;
-            max-width: 600px;
-            background-color: #1e1e1e;
-            border-radius: 25px;
-            overflow: hidden;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-        }
-
-        .search-input {
-            flex-grow: 1;
-            border: none;
-            background-color: transparent;
-            padding: 0.75rem 1.5rem;
-            font-size: 1rem;
-            color: #e0e0e0;
-            outline: none;
-        }
-
-        .search-input::placeholder {
-            color: #a0a0a0;
-        }
-
-        .search-button {
-            background-color: #007bff;
-            color: white;
-            border: none;
-            padding: 0.75rem 1.5rem;
-            cursor: pointer;
-            transition: background-color 0.2s;
-        }
-
-        .search-button:hover {
-            background-color: #0056b3;
+        nav a:hover {
+            background-color: #34495e; /* Slightly lighter dark blue */
         }
 
         .container {
-            padding: 80px 20px 20px;
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        /* --- VOD and Live Card Grid Layout --- */
+        .video-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 20px;
+            padding: 20px 0;
+        }
+        
+        /* The main live streaming section, hidden by default */
+        #live-section.hidden {
+            display: none;
+        }
+
+        .live-card, .vod-card {
+            background-color: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            transition: transform 0.2s, box-shadow 0.2s;
+            text-decoration: none;
+            color: inherit;
             display: flex;
             flex-direction: column;
-            align-items: center;
-            gap: 20px;
         }
 
-        .video-list {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: center;
-            gap: 20px;
-        }
-
-        .video-card {
-            background-color: #1e1e1e;
-            border-radius: 12px;
-            overflow: hidden;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-            transition: transform 0.2s, box-shadow 0.2s;
-            width: 200px;
-            text-decoration: none;
-            color: #e0e0e0;
-        }
-
-        .video-card:hover {
+        .live-card:hover, .vod-card:hover {
             transform: translateY(-5px);
-            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.6);
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
+        }
+        
+        /* Live Stream Specific Styling */
+        .live-card-thumbnail-container {
+            position: relative;
         }
 
-        .video-thumbnail {
+        .live-badge {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background-color: #e74c3c; /* Red */
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        /* Common Thumbnail Styles */
+        .vod-card img, .live-card img {
             width: 100%;
-            height: 168px;
+            height: 180px; /* Consistent height for thumbnails */
             object-fit: cover;
         }
 
+        /* Video Card Content */
         .video-info {
-            padding: 1rem;
-            text-align: left;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            flex-grow: 1; /* Allows info section to fill remaining space */
         }
 
-        .video-title {
-            font-size: 1.1rem;
-            font-weight: bold;
-            margin: 0 0 0.5rem 0;
-            white-space: nowrap;
+        .video-info h3 {
+            margin-top: 0;
+            margin-bottom: 8px;
+            font-size: 1.1em;
             overflow: hidden;
             text-overflow: ellipsis;
+            display: -webkit-box;
+            -webkit-line-clamp: 2; /* Limit title to 2 lines */
+            -webkit-box-orient: vertical;
         }
 
-        .video-creator {
-            font-size: 0.9rem;
-            color: #a0a0a0;
+        .channel-info {
+            display: flex;
+            align-items: center;
+            margin-top: auto; /* Pushes channel info to the bottom */
+            padding-top: 10px;
+            border-top: 1px solid #eee;
+        }
+
+        .channel-image {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            object-fit: cover;
+            margin-right: 10px;
+            border: 2px solid #3498db; /* Blue border for channel image */
+        }
+
+        .channel-name {
+            font-size: 0.9em;
+            color: #7f8c8d; /* Gray text for creator */
         }
         
-        a.creator-link {
-            text-decoration: none;
-            color: #a0a0a0;
-            transition: color 0.2s;
-        }
-
-        a.creator-link:hover {
-            color: #007bff;
-            text-decoration: underline;
-        }
-
-        .empty-state {
+        .loading-message {
             text-align: center;
-            margin-top: 50px;
-            color: #a0a0a0;
-        }
-        
-        h1.page-title {
-            color: white;
-            margin-top: 2rem;
-            font-size: 2.5rem;
-            text-align: center;
-            margin-bottom: 2rem;
+            padding: 50px;
+            font-size: 1.2em;
+            color: #95a5a6;
         }
     </style>
 </head>
 <body>
-    <div class="header">
-        <span id="loggedInAs" class="header-text" style="display:none;"></span>
-        <button id="signOutButton" class="sign-out-button" style="display:none;">Sign Out</button>
-        <a id="loginButton" href="/login" class="login-button" style="display:none;">Log In</a>
-        <a href="/upload" class="upload-button">Upload</a>
-    </div>
+    <header>
+        <h1>StreamHub</h1>
+        <nav>
+            <a href="/">Home</a>
+            <a href="/login">Creator Login</a>
+            <a href="/upload">Upload VOD</a>
+        </nav>
+    </header>
 
     <div class="container">
-        <h1 class="page-title">Videos</h1>
         
-        <div class="search-container">
-            <form id="searchForm" action="/search.html" method="GET">
-                <input type="text" name="q" placeholder="Search for videos..." class="search-input">
-                <button type="submit" class="search-button">Search</button>
-            </form>
-        </div>
+        <section id="live-section" class="hidden">
+            <h2>🔴 Live Streams</h2>
+            <div id="live-videos" class="video-grid">
+                </div>
+            <hr>
+        </section>
 
-        <div id="videoList" class="video-list">
-            <!-- Video cards will be dynamically added here -->
-        </div>
-        <div id="emptyState" class="empty-state" style="display:none;">
-            No videos found. Be the first to upload!
-        </div>
+        <section id="vod-section">
+            <h2>📼 Videos On Demand</h2>
+            <div id="vod-videos" class="video-grid">
+                <p id="vod-loading-message" class="loading-message">Loading VOD videos...</p>
+            </div>
+        </section>
+
     </div>
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            const creatorName = localStorage.getItem('creatorName');
-            const loggedInAs = document.getElementById('loggedInAs');
-            const signOutButton = document.getElementById('signOutButton');
-            const loginButton = document.getElementById('loginButton');
-            const videoList = document.getElementById('videoList');
-            const emptyState = document.getElementById('emptyState');
-
-            if (creatorName) {
-                loggedInAs.textContent = `Logged in as ${creatorName}`;
-                loggedInAs.style.display = 'inline';
-                signOutButton.style.display = 'inline';
-                loginButton.style.display = 'none';
-            } else {
-                loggedInAs.style.display = 'none';
-                signOutButton.style.display = 'none';
-                loginButton.style.display = 'inline';
-            }
-
-            signOutButton.addEventListener('click', () => {
-                localStorage.removeItem('creatorName');
-                window.location.href = '/login';
-            });
-
-            // Function to fetch videos and render them
-            async function fetchVideos() {
-                try {
-                    const response = await fetch('/api/videos');
-                    if (!response.ok) {
-                        throw new Error('Network response was not ok');
-                    }
-                    const videos = await response.json();
-                    
-                    if (videos.length === 0) {
-                        emptyState.style.display = 'block';
-                    } else {
-                        emptyState.style.display = 'none';
-                        videoList.innerHTML = ''; // Clear existing content
-                        videos.forEach(video => {
-                            const videoCard = document.createElement('a');
-                            videoCard.href = `/watch?id=${video.id}`; // Changed to correctly use the new id field
-                            videoCard.className = 'video-card';
-                            
-                            videoCard.innerHTML = `
-                                <img src="${video.thumbnail_url}" alt="Thumbnail for ${video.title}" class="video-thumbnail">
-                                <div class="video-info">
-                                    <h3 class="video-title">${video.title}</h3>
-                                    <p class="video-creator">by <a href="/creator?name=${encodeURIComponent(video.creator)}" class="creator-link">${video.creator}</a></p>
-                                </div>
-                            `;
-                            videoList.appendChild(videoCard);
-                        });
-                    }
-                } catch (error) {
-                    console.error('Failed to fetch videos:', error);
-                    emptyState.textContent = 'Failed to load videos. Please try again later.';
-                    emptyState.style.display = 'block';
-                }
-            }
-            
-            fetchVideos();
+            fetchLiveStreams();
+            fetchVodVideos();
         });
+
+        // Base URL for the Express server (same origin)
+        const BASE_URL = ''; 
+
+        /**
+         * Creates an HTML card element for a video (VOD or Live).
+         * @param {object} data - The stream/video data.
+         * @param {string} type - 'vod' or 'live'.
+         * @returns {HTMLAnchorElement} The created anchor element acting as a card.
+         */
+        function createVideoCard(data, type) {
+            const card = document.createElement('a');
+            
+            // Determine the URL based on type
+            if (type === 'live') {
+                card.href = `/watch?streamKey=${data.stream_key}`;
+                card.className = 'live-card';
+            } else {
+                card.href = `/watch?id=${data.id}`;
+                card.className = 'vod-card';
+            }
+
+            // Determine thumbnail/placeholder
+            const thumbnailUrl = data.thumbnail_url || data.channel_image_url || '/channel_images/default.png';
+            const thumbnailHTML = `
+                <div class="${type}-card-thumbnail-container">
+                    <img src="${thumbnailUrl}" alt="${data.title} Thumbnail">
+                    ${type === 'live' ? '<span class="live-badge">LIVE</span>' : ''}
+                </div>
+            `;
+            
+            // Determine channel image and name
+            const channelImageUrl = data.channel_image_url || '/channel_images/default.png';
+            const channelName = data.display_name || data.creator; // Live uses display_name, VOD uses creator
+
+            const infoHTML = `
+                <div class="video-info">
+                    <h3>${data.title}</h3>
+                    <div class="channel-info">
+                        <img src="${channelImageUrl}" alt="${channelName}'s Channel Image" class="channel-image">
+                        <span class="channel-name">${channelName}</span>
+                    </div>
+                </div>
+            `;
+
+            card.innerHTML = thumbnailHTML + infoHTML;
+            return card;
+        }
+
+        /**
+         * Fetches and displays Live Stream data.
+         */
+        async function fetchLiveStreams() {
+            const liveVideosContainer = document.getElementById('live-videos');
+            const liveSection = document.getElementById('live-section');
+
+            try {
+                const response = await fetch(`${BASE_URL}/api/live`);
+                if (!response.ok) {
+                    throw new Error('Failed to fetch live streams');
+                }
+                const liveStreams = await response.json();
+
+                if (liveStreams.length > 0) {
+                    liveVideosContainer.innerHTML = ''; // Clear previous content
+                    liveStreams.forEach(stream => {
+                        // For Live streams, the channel_image_url is available directly from the JOIN
+                        const card = createVideoCard(stream, 'live');
+                        liveVideosContainer.appendChild(card);
+                    });
+                    liveSection.classList.remove('hidden'); // Show the live section
+                } else {
+                    liveSection.classList.add('hidden'); // Keep it hidden if no one is live
+                }
+            } catch (error) {
+                console.error('Error fetching live streams:', error);
+                liveSection.classList.add('hidden'); // Hide on error
+            }
+        }
+
+        /**
+         * Fetches and displays VOD video data.
+         */
+        async function fetchVodVideos() {
+            const vodVideosContainer = document.getElementById('vod-videos');
+            const loadingMessage = document.getElementById('vod-loading-message');
+            
+            // Remove loading message immediately
+            if(loadingMessage) {
+                loadingMessage.remove();
+            }
+
+            try {
+                const response = await fetch(`${BASE_URL}/api/videos`);
+                if (!response.ok) {
+                    throw new Error('Failed to fetch VOD videos');
+                }
+                const vodVideos = await response.json();
+                
+                if (vodVideos.length > 0) {
+                    // For VOD, we don't have the user's channel image directly in the `videos` table.
+                    // A proper implementation would join the `videos` and `users` tables based on the creator's username.
+                    // For now, we will use a generic placeholder or assume the VOD endpoint is enhanced.
+                    // Since the `server.js` VOD endpoint (`/api/videos`) currently only returns
+                    // data from the `videos` table, the channel image will use the fallback.
+                    // In a real app, you would update the `/api/videos` endpoint to JOIN the `users` table.
+
+                    vodVideos.forEach(video => {
+                        const card = createVideoCard(video, 'vod');
+                        vodVideosContainer.appendChild(card);
+                    });
+                } else {
+                    vodVideosContainer.innerHTML = '<p class="loading-message">No VOD videos available yet.</p>';
+                }
+            } catch (error) {
+                console.error('Error fetching VOD videos:', error);
+                vodVideosContainer.innerHTML = '<p class="loading-message">Failed to load videos.</p>';
+            }
+        }
     </script>
 </body>
 </html>
